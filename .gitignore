@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+data/cookies/
+data/logs/
+data/processed_ids.json
+*.egg-info/
+dist/
+build/
+.env
+config/config.yaml
+venv/
+.DS_Store

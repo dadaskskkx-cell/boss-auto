@@ -1,0 +1,26 @@
+llm:
+  base_url: "https://api.deepseek.com/v1"
+  api_key: "sk-xxx"  # 替换为你的API Key
+  model: "deepseek-chat"
+
+scheduler:
+  resume_scan_interval: 10     # 扫描简历间隔（分钟）
+  message_check_interval: 5    # 检查消息间隔（分钟）
+
+boss:
+  base_url: "https://www.zhipin.com"
+  cookie_path: "data/cookies/boss_cookies.json"
+
+messaging:
+  matched_template: |
+    你好！看到你的简历觉得和我们的岗位很匹配，方便回答几个问题吗？
+    1. 目前是在职还是离职状态？
+    2. 期望薪资范围是多少？
+    3. 最快多久可以到岗？
+  rejected_template: |
+    感谢你的关注，经过评估你的经历与当前岗位需求不太匹配，祝你求职顺利！
+  processed_ids_file: "data/processed_ids.json"
+
+logging:
+  level: "INFO"
+  file: "data/logs/boss_auto.log"

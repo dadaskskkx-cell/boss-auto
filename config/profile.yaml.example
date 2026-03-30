@@ -1,0 +1,45 @@
+job_title: "Python后端开发工程师"
+job_description: |
+  负责公司核心业务系统的后端开发和维护。
+  技术栈：Python + FastAPI/Django + PostgreSQL + Redis。
+  要求有良好的编码习惯和团队协作能力。
+
+rules:
+  min_education: "本科"
+  education_list: ["本科", "硕士", "博士"]
+  min_experience: 3
+  max_age: 45
+  required_skills:
+    - "Python"
+  preferred_skills:
+    - "Django"
+    - "FastAPI"
+    - "Flask"
+    - "MySQL"
+    - "PostgreSQL"
+    - "Redis"
+    - "Docker"
+  salary_range: [15000, 50000]
+  blacklist_keywords:
+    - "外包"
+    - "劳务派遣"
+    - "培训"
+
+llm_prompt: |
+  你是一个专业的HR助手。请根据以下JD描述和候选人简历，评估候选人与岗位的匹配度。
+
+  岗位：{job_title}
+  JD：{job_description}
+
+  候选人简历：
+  {resume_text}
+
+  请按以下格式输出：
+  评分: <0-100的整数>
+  理由: <一句话说明理由>
+  建议: <matched 或 rejected>
+
+questions:
+  - "目前是在职还是离职状态？"
+  - "期望薪资范围是多少？"
+  - "最快多久可以到岗？"
