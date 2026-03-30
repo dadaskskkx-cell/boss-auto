@@ -9,8 +9,7 @@ from pathlib import Path
 import yaml
 from loguru import logger
 
-from .crawler import BossCrawler
-from .cookie_manager import CookieManager
+from .rpa_crawler import RPACrawler
 from .llm_client import LLMClient
 from .messenger import Messenger
 from .resume_filter import ResumeFilter
@@ -61,7 +60,6 @@ class CrawlerManager:
         self.crawler: BossCrawler | None = None
         self.messenger: Messenger | None = None
         self.llm_client: LLMClient | None = None
-        self.cookie_mgr: CookieManager | None = None
 
         # 多岗位
         self.jobs: list[dict] = []
@@ -79,28 +77,15 @@ class CrawlerManager:
             with open(profile_path, "r", encoding="utf-8") as f:
                 self.profile = yaml.safe_load(f) or {}
 
-        # 将相对路径转为基于项目根目录的绝对路径
-        for key in ("cookie_path",):
-            if key in self.config.get("boss", {}):
-                p = Path(self.config["boss"][key])
-                if not p.is_absolute():
-                    self.config["boss"][key] = str(project_root / p)
-
+        # 相对路径转绝对路径
         for key in ("processed_ids_file",):
             if key in self.config.get("messaging", {}):
                 p = Path(self.config["messaging"][key])
                 if not p.is_absolute():
                     self.config["messaging"][key] = str(project_root / p)
 
-        log_file = self.config.get("logging", {}).get("file")
-        if log_file:
-            p = Path(log_file)
-            if not p.is_absolute():
-                self.config["logging"]["file"] = str(project_root / p)
-
-        self.cookie_mgr = CookieManager(self.config.get("boss", {}).get("cookie_path", str(project_root / "data" / "cookies" / "boss_cookies.json")))
         self.llm_client = LLMClient(self.config.get("llm", {}))
-        self.crawler = BossCrawler(self.config, self.cookie_mgr)
+        self.crawler = RPACrawler(self.config)
         self.messenger = Messenger(self.config, self.crawler)
 
     def save_profile(self):
@@ -153,21 +138,33 @@ class CrawlerManager:
 
     async def _async_main(self):
         try:
-            self.add_log("正在启动浏览器...")
-            await self.crawler.start()
-            self.add_log("登录成功")
+            self.add_log("正在检测Boss直聘客户端...")
+            await asyncio.to_thread(self.crawler.start)
+            self.add_log("客户端就绪")
+        except Exception as e:
+            self.status = "error"
+            self.add_log(f"客户端检测失败: {e}")
+            return
 
+        try:
             # 抓取所有岗位JD
             await self._fetch_jobs()
+        except Exception as e:
+            self.add_log(f"抓取岗位JD异常: {e}（将使用默认JD继续）")
 
+        try:
             # 为每个岗位创建独立的筛选器
             self._init_job_slots()
+        except Exception as e:
+            self.add_log(f"初始化筛选器异常: {e}")
 
+        try:
             # 主循环
             scan_interval = self.config.get("scheduler", {}).get("resume_scan_interval", 10) * 60
             msg_interval = self.config.get("scheduler", {}).get("message_check_interval", 5) * 60
-            last_scan = time.time()
-            last_msg_check = time.time()
+            # 首次扫描延迟30秒启动，之后按间隔执行
+            last_scan = time.time() - scan_interval + 30
+            last_msg_check = time.time() - msg_interval + 30
 
             active_jobs = [s.job.get("title", "?") for s in self.job_slots if s.enabled]
             self.add_log(f"已加载 {len(self.job_slots)} 个岗位: {active_jobs}")
@@ -183,24 +180,30 @@ class CrawlerManager:
 
                 if now - last_scan >= scan_interval:
                     last_scan = now
-                    await self._scan_resumes()
+                    try:
+                        await self._scan_resumes()
+                    except Exception as e:
+                        self.add_log(f"扫描异常: {e}")
 
                 if now - last_msg_check >= msg_interval:
                     last_msg_check = now
-                    await self._check_messages()
+                    try:
+                        await self._check_messages()
+                    except Exception as e:
+                        self.add_log(f"消息检查异常: {e}")
 
                 await asyncio.sleep(10)
 
         except Exception as e:
             self.status = "error"
-            self.add_log(f"运行错误: {e}")
+            self.add_log(f"主循环异常: {e}")
         finally:
-            await self.crawler.stop()
+            self.crawler.stop()
             self.add_log("爬虫已关闭")
 
     async def _fetch_jobs(self):
-        self.add_log("正在从Boss直聘抓取所有在招岗位...")
-        self.jobs = await self.crawler.fetch_my_jobs()
+        self.add_log("正在从Boss直聘客户端抓取岗位...")
+        self.jobs = await asyncio.to_thread(self.crawler.fetch_my_jobs)
         if self.jobs:
             titles = [j.get("title", "?") for j in self.jobs]
             self.add_log(f"抓取到 {len(self.jobs)} 个岗位: {titles}")
@@ -248,24 +251,13 @@ class CrawlerManager:
 
         self.add_log(f"=== 开始扫描简历（{len(active_slots)}个岗位） ===")
         try:
-            resumes = await self.crawler.fetch_resumes(max_pages=3)
+            resumes = await asyncio.to_thread(self.crawler.fetch_resumes, 20)
 
             for resume in resumes:
                 if self._stop_event.is_set() or self._paused.is_set():
                     break
 
-                geek_id = resume.get("geek_id")
-                if not geek_id:
-                    continue
-                if self.messenger.is_processed(geek_id):
-                    continue
-
-                # 获取详细简历
-                detail = await self.crawler.get_resume_detail(geek_id)
-                if detail:
-                    resume.update(detail)
-
-                name = resume.get("name", geek_id)
+                name = resume.get("name", "未知")
 
                 # 对每个启用的岗位分别筛选
                 best_match = None
@@ -281,31 +273,36 @@ class CrawlerManager:
                         best_score = result.get("score", 0)
                         best_slot = slot
 
-                # 汇总结果
                 self.stats["total_scanned"] += 1
 
                 if best_match and best_slot:
-                    # 匹配到某个岗位
                     best_slot.stats["matched"] += 1
                     self.stats["matched"] += 1
                     self.add_log(
                         f"✅ {name} → 匹配 [{best_slot.job.get('title')}] "
                         f"(评分:{best_score} {best_match.get('reason', '')})"
                     )
-                    await self.messenger.handle_filter_result(geek_id, best_match, best_slot.questions)
-                    self.stats["messages_sent"] += 1
-                    best_slot.stats["sent"] += 1
+                    # 发送匹配消息
+                    questions = best_slot.questions
+                    msg = self.config.get("messaging", {}).get("matched_template", "")
+                    if questions:
+                        q_text = "\n".join(f"{i+1}. {q}" for i, q in enumerate(questions))
+                        msg = f"{msg}\n{q_text}" if msg else q_text
+                    if msg:
+                        sent = await asyncio.to_thread(self.crawler.send_message, name, msg.strip())
+                        if sent:
+                            self.stats["messages_sent"] += 1
+                            best_slot.stats["sent"] += 1
                 else:
-                    # 所有岗位都不匹配
                     for slot in active_slots:
                         slot.stats["rejected"] += 1
                     self.stats["rejected"] += 1
                     self.add_log(f"❌ {name} → 所有岗位均不匹配")
                     # 发送婉拒
-                    await self.messenger.handle_filter_result(
-                        geek_id, {"status": "rejected", "reason": "不匹配", "score": 0}, []
-                    )
-                    self.stats["messages_sent"] += 1
+                    msg = self.config.get("messaging", {}).get("rejected_template", "")
+                    if msg:
+                        await asyncio.to_thread(self.crawler.send_message, name, msg.strip())
+                        self.stats["messages_sent"] += 1
 
                 await asyncio.sleep(random.uniform(3, 6))
 
@@ -317,11 +314,11 @@ class CrawlerManager:
     async def _check_messages(self):
         self.add_log("检查未读消息...")
         try:
-            messages = await self.crawler.get_unread_messages()
+            messages = await asyncio.to_thread(self.crawler.get_unread_messages)
             for msg in messages:
-                geek_id = msg.get("geek_id", "?")
+                name = msg.get("name", "?")
                 text = msg.get("message_text", "")[:80]
-                self.add_log(f"未读消息 [{geek_id}]: {text}")
+                self.add_log(f"未读消息 [{name}]: {text}")
         except Exception as e:
             self.add_log(f"消息检查异常: {e}")
 
