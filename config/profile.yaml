@@ -1,29 +1,7 @@
-job_title: "Python后端开发工程师"
+job_title: "示例岗位"
 job_description: |
-  负责公司核心业务系统的后端开发和维护。
-  技术栈：Python + FastAPI/Django + PostgreSQL + Redis。
-  要求有良好的编码习惯和团队协作能力。
-
-rules:
-  min_education: "本科"
-  education_list: ["本科", "硕士", "博士"]
-  min_experience: 3
-  max_age: 45
-  required_skills:
-    - "Python"
-  preferred_skills:
-    - "Django"
-    - "FastAPI"
-    - "Flask"
-    - "MySQL"
-    - "PostgreSQL"
-    - "Redis"
-    - "Docker"
-  salary_range: [15000, 50000]
-  blacklist_keywords:
-    - "外包"
-    - "劳务派遣"
-    - "培训"
+  这里填写你本次要招聘的岗位 JD。
+  实际使用时，建议通过 launch.command 在启动时重新输入。
 
 llm_prompt: |
   你是一个专业的HR助手。请根据以下JD描述和候选人简历，评估候选人与岗位的匹配度。
@@ -43,3 +21,24 @@ questions:
   - "目前是在职还是离职状态？"
   - "期望薪资范围是多少？"
   - "最快多久可以到岗？"
+rules:
+  blacklist_keywords:
+  - 外包
+  - 劳务派遣
+  - 培训
+  reject_keywords: []
+  llm_score_threshold: 60
+  use_llm: false
+  max_age: 45
+  min_education: 不限
+  min_experience: 0
+  max_short_stints: 1
+  min_keyword_hits: 1
+  required_keywords_any:
+  - 示例关键词
+  keyword_pool:
+  - 示例关键词
+  - 第二关键词
+  salary_range:
+  - 15000
+  - 50000

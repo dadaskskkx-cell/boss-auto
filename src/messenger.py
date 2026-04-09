@@ -1,14 +1,15 @@
 """消息发送管理"""
 
+import inspect
 import json
 from pathlib import Path
-from loguru import logger
+from typing import Any
 
-from .crawler import BossCrawler
+from loguru import logger
 
 
 class Messenger:
-    def __init__(self, config: dict, crawler: BossCrawler):
+    def __init__(self, config: dict, crawler: Any):
         self.config = config
         self.crawler = crawler
         self.matched_template = config["messaging"]["matched_template"]
@@ -16,6 +17,12 @@ class Messenger:
         self.processed_ids_file = Path(config["messaging"]["processed_ids_file"])
         self._processed_ids: set[str] = set()
         self._load_processed_ids()
+
+    async def _send_message(self, geek_id: str, message: str) -> bool:
+        result = self.crawler.send_message(geek_id, message)
+        if inspect.isawaitable(result):
+            result = await result
+        return bool(result)
 
     def _load_processed_ids(self):
         """加载已处理的候选人ID"""
@@ -39,6 +46,11 @@ class Messenger:
         """检查候选人是否已处理过"""
         return geek_id in self._processed_ids
 
+    def mark_processed(self, geek_id: str):
+        """标记候选人为已处理并持久化"""
+        self._processed_ids.add(geek_id)
+        self._save_processed_ids()
+
     async def send_matched_message(self, geek_id: str, questions: list[str] | None = None):
         """向匹配的候选人发送标准问题"""
         if self.is_processed(geek_id):
@@ -51,7 +63,7 @@ class Messenger:
             q_text = "\n".join(f"{i+1}. {q}" for i, q in enumerate(questions))
             message = f"{message}\n{q_text}" if "{questions}" not in message else message.replace("{questions}", q_text)
 
-        success = await self.crawler.send_message(geek_id, message)
+        success = await self._send_message(geek_id, message)
         if success:
             self._processed_ids.add(geek_id)
             self._save_processed_ids()
@@ -63,7 +75,7 @@ class Messenger:
             return
 
         message = self.rejected_template.strip()
-        success = await self.crawler.send_message(geek_id, message)
+        success = await self._send_message(geek_id, message)
         if success:
             self._processed_ids.add(geek_id)
             self._save_processed_ids()

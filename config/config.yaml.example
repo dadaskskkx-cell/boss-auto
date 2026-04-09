@@ -1,15 +1,36 @@
 llm:
-  base_url: "https://api.deepseek.com/v1"
-  api_key: "sk-xxx"  # 替换为你的API Key
-  model: "deepseek-chat"
+  base_url: "https://open.bigmodel.cn/api/anthropic"
+  api_key: "sk-xxx"  # 替换为你的 GLM API Key
+  model: "glm-5"
+  vision_provider: "zhipu_openai"
+  vision_base_url: "https://open.bigmodel.cn/api/paas/v4/"
+  vision_model: "glm-4.6v-flash"
+  vision_api_key: "sk-xxx"  # 可与上面的 api_key 保持一致
+  vision_retry_count: 3
+  vision_retry_delay_seconds: 2
 
 scheduler:
   resume_scan_interval: 10     # 扫描简历间隔（分钟）
-  message_check_interval: 5    # 检查消息间隔（分钟）
 
 boss:
   base_url: "https://www.zhipin.com"
-  cookie_path: "data/cookies/boss_cookies.json"
+
+rpa:
+  dry_run: true
+  minimum_keywords: 3
+  required_keywords:
+    - "消息"
+    - "推荐"
+    - "搜索"
+    - "职位"
+    - "互动"
+
+workflow:
+  screen_scan_limit: 0
+  max_empty_screens: 5
+  scroll_pages_per_turn: 3
+  detail_pause_seconds: 1.2
+
 
 messaging:
   matched_template: |
